@@ -1,0 +1,95 @@
+// PaperLab database schema (Phase 7+).
+// PostgreSQL via Prisma. Run: npx prisma migrate dev
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Paper {
+  id            String   @id @default(cuid())
+  arxivId       String   @unique
+  slug          String   @unique
+  title         String
+  authors       String[]
+  year          Int
+  venue         String?
+  citationCount Int      @default(0)
+  abstract      String
+  tags          String[]
+  pdfUrl        String?
+
+  /// Full AI-generated analysis (explainLevels, psi, architecture, math,
+  /// applications, code, course) — matches the Paper type in lib/data/types.ts
+  analysis      Json?
+  analyzedAt    DateTime?
+
+  chunks        PaperChunk[]
+  chats         ChatSession[]
+  progress      CourseProgress[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+/// RAG chunks; embeddings live in ChromaDB keyed by this row's id.
+model PaperChunk {
+  id        String @id @default(cuid())
+  paperId   String
+  paper     Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  source    String
+  content   String
+  ordering  Int
+
+  @@index([paperId])
+}
+
+model User {
+  id        String   @id // Clerk user id
+  email     String?  @unique
+  chats     ChatSession[]
+  progress  CourseProgress[]
+  createdAt DateTime @default(now())
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String?
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  paperId   String
+  paper     Paper         @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+  createdAt DateTime      @default(now())
+
+  @@index([paperId])
+  @@index([userId])
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String // "user" | "assistant"
+  content   String
+  sources   String[]
+  createdAt DateTime    @default(now())
+
+  @@index([sessionId])
+}
+
+model CourseProgress {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paperId          String
+  paper            Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  completedLessons String[]
+  quizScores       Json?
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, paperId])
+}
